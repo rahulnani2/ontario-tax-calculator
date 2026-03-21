@@ -1,0 +1,51 @@
+#!/bin/bash
+# Open port 80 3000 and 5000 
+# Install nginx
+ sudo apt update 
+ sudo apt install nginx -y
+ sudo systemctl start nginx
+ sudo systemctl enable nginx
+
+ # Build the node frontend Application in local or on VM based on source code location using the below commands
+ # npm install && npm run build
+
+# Copy the build output to the nginx default directory /var/www/html/
+ scp -i id_rsa  -r /d/Rahul\ Learning/Ontario\ Tax\ Calculator/frontend/build/*   azureuser@<WebVM_PublicIP>:/home/azureuser/
+# Configure nginx to serve the frontend application 
+# sudo nano /etc/nginx/sites-available/default
+  server {
+    listen 80;
+    server_name _;
+   
+    # Serve React frontend
+    location / {
+        root /var/www/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;  # handles React routing
+    }
+
+    # Proxy API calls to Node.js backend
+    location /api {
+        proxy_pass http://<app_vm_private_ip>:5000;
+         proxy_http_version 1.1;                                                                                                                                                                     
+        proxy_set_header X-Real-IP $remote_addr;                                                                                                                                                    
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;                                                                                                                                
+        proxy_set_header Host $host;                                                                                                                                                                
+        proxy_cache_bypass $http_upgrade;                                                                                                                                                           
+        proxy_connect_timeout 10s;                                                                                                                                                                  
+        proxy_read_timeout 30s;  
+        }
+
+    # Proxy health check
+    location /health {
+        proxy_pass http://<app_vm_private_ip>:5000;
+    }
+} 
+
+# Restart nginx to apply the changes
+sudo nginx -t
+sudo systemctl restart nginx
+sudo systemctl status nginx
+
+# # Test if port 5000 is reachbale from Web Virtual machine
+http://<app_vm_private_ipip>:5000/api/calculate

@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────
+# ENVIRONMENT & SECRETS — Never commit these
+# ─────────────────────────────────────────
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+*.env
+ecosystem.config.js        # Contains DB credentials
+
+# ─────────────────────────────────────────
+# NODE
+# ─────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# ─────────────────────────────────────────
+# BUILD OUTPUTS
+# ─────────────────────────────────────────
+backend/dist/
+frontend/dist/
+frontend/build/
+
+# ─────────────────────────────────────────
+# TYPESCRIPT
+# ─────────────────────────────────────────
+*.tsbuildinfo
+*.js.map
+
+# ─────────────────────────────────────────
+# OS FILES
+# ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─────────────────────────────────────────
+# EDITOR
+# ─────────────────────────────────────────
+.vscode/
+.cursor/
+.idea/
+*.swp
+*.swo
+
+# ─────────────────────────────────────────
+# LOGS
+# ─────────────────────────────────────────
+logs/
+*.log
+pm2-*.log
+
+# ─────────────────────────────────────────
+# COVERAGE & TESTING
+# ─────────────────────────────────────────
+coverage/
+.nyc_output/

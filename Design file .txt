@@ -1,0 +1,418 @@
+🧾 Business Context
+A web application that helps Ontario residents estimate their provincial and federal income tax, identify deductions/credits, 
+and explore tax-saving strategies — built to demonstrate Azure 3-tier architecture.
+
+Tier 1 — Presentation (Azure App Service / Static Web App)
+#Requirement
+BR-01 Users can input income details (employment, self-employment, investment, rental)
+BR-02 Users can select applicable deductions (RRSP, childcare, union dues, etc.)
+BR-03 Users can select applicable tax credits (Basic Personal Amount, Ontario Tax Reduction, etc.)
+BR-04 The app displays a real-time tax breakdown (federal + Ontario provincial)
+BR-05 Results show marginal vs. effective tax rate clearly
+BR-06 Users can compare two tax scenarios side-by-side (e.g., with/without RRSP contribution)
+BR-07 The app is responsive and accessible on desktop and Mobile browsers
+BR-08Users can export/download their tax summary as a PDF or CSV
+
+Tier 2 — Application Logic (Azure App Service — Backend API)
+#Requirement
+BR-09 The system applies current CRA federal tax brackets for calculation
+BR-10 The system applies current Ontario provincial tax brackets and surtax rules
+BR-11 The API validates all user inputs and returns meaningful error messages
+BR-12 The system supports tax year selection (e.g., 2023, 2024, 2025)
+BR-13 The API calculates CPP/EI contributions as part of the net income picture
+BR-14 The system provides tax-saving recommendations based on user inputs (e.g., "Contribute $X more to RRSP to drop a tax bracket")
+BR-15 All calculation logic is versioned so historic tax year rules remain accurate
+
+
+Tier 3 — Data (Azure SQL Database / Cosmos DB)
+#Requirement
+BR-16 Tax bracket tables (federal + Ontario) are stored per tax year and are admin-updatable
+BR-17 Deduction and credit reference data is stored and queryable by tax year
+BR-18 Users can optionally create an account to save and retrieve past calculations
+BR-19 All saved calculation sessions store inputs, outputs, and timestamp for audit
+BR-20 Admin users can update tax rate tables without redeploying the application
+
+
+Cross-Cutting / Non-Functional Requirements
+#Requirement
+BR-21 Authentication via Azure AD B2C for user accounts (optional/registered users)
+BR-22 All data in transit encrypted via HTTPS (TLS 1.2+)
+BR-23 PII (if stored) must comply with Canadian privacy standards (PIPEDA)
+BR-24 App Service auto-scales based on load (to demo Azure scaling capability)
+BR-25 Application and API logs shipped to Azure Monitor / Application Insights
+BR-26 Infrastructure provisioned via Terraform or Bicep (IaC — great for your DevOps portfolio)
+
+Prompt Map 
+# 🖱️ Cursor Cheat Sheet — Ontario Income Tax Calculator
+> Paste each prompt block directly into Cursor Chat (Cmd+L / Ctrl+L)
+> Follow the order — each step builds on the previous one.
+ 
+---
+ 
+## STEP 1 — Project Scaffold
+ 
+```
+Scaffold a full-stack monorepo project called ontario-tax-calculator with:
+- Frontend: React + TypeScript + Tailwind CSS (in /frontend folder)
+- Backend: Node.js + Express + TypeScript (in /backend folder)
+- Database scripts folder (in /db folder)
+- Root docker-compose.yml for local development
+- Each sub-project should have its own package.json and tsconfig.json
+- Add a root README.md with a project overview
+```
+ 
+---
+ 
+## STEP 2 — Database Schema
+ 
+```
+In the /db folder, create a schema.sql file compatible with Azure SQL / SQL Server with the following tables:
+ 
+1. tax_years (id, year, is_active)
+2. federal_brackets (id, tax_year_id, min_income, max_income, rate)
+3. ontario_brackets (id, tax_year_id, min_income, max_income, rate)
+4. ontario_surtax (id, tax_year_id, threshold_1, threshold_2, rate_1, rate_2)
+5. deductions (id, tax_year_id, name, slug, max_amount, description)
+6. credits (id, tax_year_id, name, slug, amount, is_refundable)
+7. user_sessions (id, session_token, inputs_json, results_json, created_at, updated_at)
+ 
+Add appropriate primary keys, foreign keys, indexes, and NOT NULL constraints.
+```
+ 
+---
+ 
+## STEP 3 — Seed Data
+ 
+```
+In the /db folder, create a seed.sql file that inserts realistic data for tax years 2023, 2024, and 2025 including:
+ 
+Federal tax brackets (Canada):
+- 15% on first $55,867
+- 20.5% on $55,867 to $111,733
+- 26% on $111,733 to $154,906
+- 29% on $154,906 to $220,000
+- 33% above $220,000
+ 
+Ontario provincial brackets:
+- 5.05% on first $51,446
+- 9.15% on $51,446 to $102,894
+- 11.16% on $102,894 to $150,000
+- 12.16% on $150,000 to $220,000
+- 13.16% above $220,000
+ 
+Ontario surtax thresholds:
+- 20% surtax on Ontario tax above $5,315
+- 36% additional surtax on Ontario tax above $6,802
+ 
+Common deductions: RRSP, TFSA note, Union Dues, Childcare Expenses, Moving Expenses
+Common credits: Basic Personal Amount ($15,705 federal), Ontario Basic Personal ($11,865), Ontario Tax Reduction
+ 
+Use 2024 rates for all three years as placeholder (note in comments).
+```
+ 
+---
+ 
+## STEP 4 — Backend API Structure
+ 
+```
+In /backend/src, create an Express + TypeScript REST API with this structure:
+ 
+/routes
+  - taxRoutes.ts       (POST /api/calculate, GET /api/tax-data/:year)
+  - sessionRoutes.ts   (POST /api/sessions, GET /api/sessions/:token)
+ 
+/controllers
+  - taxController.ts
+  - sessionController.ts
+ 
+/services
+  - taxCalculationService.ts   (core calculation logic)
+  - dbService.ts               (SQL Server connection using mssql package)
+ 
+/middleware
+  - errorHandler.ts
+  - requestLogger.ts
+ 
+/types
+  - taxTypes.ts   (TypeScript interfaces for all request/response shapes)
+ 
+app.ts   (Express app setup with CORS, JSON middleware)
+server.ts (listens on PORT from env)
+```
+ 
+---
+ 
+## STEP 5 — Tax Calculation Logic
+ 
+```
+In /backend/src/services/taxCalculationService.ts, implement a calculateTax function that:
+ 
+Accepts this input type:
+{
+  tax_year: number,
+  employment_income: number,
+  self_employment_income: number,
+  investment_income: number,
+  rrsp_contribution: number,
+  other_deductions: number,
+  other_credits: number
+}
+ 
+And returns:
+{
+  gross_income: number,
+  net_income: number,
+  federal_tax: number,
+  ontario_tax: number,
+  ontario_surtax: number,
+  cpp_contribution: number,
+  ei_premium: number,
+  total_tax: number,
+  total_deductions: number,
+  effective_tax_rate: number,
+  marginal_tax_rate: number,
+  take_home_income: number,
+  bracket_breakdown: array of { bracket, rate, tax_amount }
+}
+ 
+Use 2024 CPP rate (5.95%, max pensionable $68,500) and EI rate (1.66%, max insurable $63,200).
+Fetch bracket data from the database using dbService.
+Add JSDoc comments to all functions.
+```
+ 
+---
+ 
+## STEP 6 — Calculate API Endpoint
+ 
+```
+In /backend/src/controllers/taxController.ts, implement:
+ 
+POST /api/calculate
+- Validate request body using Zod schema
+- Call taxCalculationService.calculateTax()
+- Return results as JSON
+- Handle validation errors with 400 status
+- Handle server errors with 500 status
+ 
+GET /api/tax-data/:year
+- Return all brackets, deductions, and credits for the given tax year
+- Return 404 if year not found
+ 
+Add input validation rules:
+- tax_year: required, integer between 2020 and 2026
+- employment_income: required, number >= 0
+- rrsp_contribution: optional, number >= 0, max 29210
+- All income fields: optional, default 0
+```
+ 
+---
+ 
+## STEP 7 — Frontend Component: Tax Input Form
+ 
+```
+In /frontend/src/components, create a TaxInputForm.tsx component using React + TypeScript + Tailwind CSS:
+ 
+Fields:
+- Tax Year (dropdown: 2023, 2024, 2025)
+- Employment Income (number input)
+- Self-Employment Income (number input)
+- Investment Income (number input)
+- RRSP Contribution (number input with helper text showing max limit)
+- Other Deductions (number input)
+- Other Credits (number input)
+ 
+Features:
+- All currency inputs should format with $ and comma separators on blur
+- Show a helper tooltip/icon next to RRSP explaining the deduction
+- A "Calculate Tax" submit button
+- Basic client-side validation with inline error messages
+- On submit, call POST /api/calculate and pass results up via onResults callback prop
+```
+ 
+---
+ 
+## STEP 8 — Frontend Component: Tax Results Panel
+ 
+```
+In /frontend/src/components, create a TaxResultsPanel.tsx component that accepts the API result object and displays:
+ 
+Summary cards row:
+- Gross Income
+- Total Tax
+- Take-Home Income
+- Effective Rate
+ 
+Breakdown table:
+- Federal Tax
+- Ontario Tax
+- Ontario Surtax
+- CPP Contribution
+- EI Premium
+- Total Deductions
+- Net Income (after deductions)
+ 
+Bracket Breakdown section:
+- Table showing each bracket hit, the rate, and tax amount
+ 
+Chart:
+- Horizontal bar chart using Recharts showing Income vs Total Tax vs Take-Home
+ 
+Savings Tip:
+- If effective rate > 30%, show a tip: "Consider contributing more to RRSP to reduce taxable income"
+- If RRSP contribution < 18% of income, show remaining contribution room estimate
+ 
+Style with Tailwind. Use green for take-home, red for tax, blue for neutral values.
+```
+ 
+---
+ 
+## STEP 9 — Scenario Comparison Feature
+ 
+```
+In /frontend/src/components, create a ScenarioComparison.tsx component:
+ 
+- Renders two TaxInputForm instances side by side labelled "Scenario A" and "Scenario B"
+- Each has its own Calculate button and results panel
+- Below both panels, show a Comparison Summary that highlights:
+  - Difference in Total Tax ($ and %)
+  - Difference in Take-Home Income
+  - Which scenario saves more and by how much
+- Add a "Reset" button to clear both scenarios
+- Make it responsive: stack vertically on mobile, side-by-side on desktop
+```
+ 
+---
+ 
+## STEP 10 — PDF Export
+ 
+```
+In /frontend/src, add a PDF export feature:
+ 
+Install jsPDF and jspdf-autotable.
+ 
+Create a utility function exportTaxSummaryPDF(results, inputs) that generates a PDF with:
+- Header: "Ontario Income Tax Summary — [Tax Year]"
+- Section 1: Income Summary table (inputs)
+- Section 2: Tax Breakdown table (all calculated fields)
+- Section 3: Bracket Breakdown table
+- Footer: "Generated by Ontario Tax Calculator — For estimation purposes only. Consult a tax professional."
+ 
+Add a "Download PDF" button to TaxResultsPanel that calls this function.
+```
+ 
+---
+ 
+## STEP 11 — Docker Compose for Local Dev
+ 
+```
+Create a docker-compose.yml at the project root that runs:
+ 
+1. db service:
+   - Image: mcr.microsoft.com/mssql/server:2022-latest
+   - Port: 1433
+   - Environment: SA password, accept EULA
+   - Volume: mssql_data
+ 
+2. backend service:
+   - Build from /backend Dockerfile
+   - Port: 5000
+   - Depends on db
+   - Environment variables: DB_SERVER, DB_NAME, DB_USER, DB_PASSWORD, PORT
+ 
+3. frontend service:
+   - Build from /frontend Dockerfile
+   - Port: 3000
+   - Depends on backend
+   - Environment: REACT_APP_API_URL=http://localhost:5000
+ 
+Also create:
+- /backend/Dockerfile (Node 20 alpine, npm install, npm run build, npm start)
+- /frontend/Dockerfile (Node 20 alpine, npm install, npm run build, serve -s build)
+- .env.example file at root with all required env vars listed
+```
+ 
+---
+ 
+## STEP 12 — Environment Config for Azure
+ 
+```
+Create an /backend/src/config/azureConfig.ts file that:
+ 
+- Reads DB connection from environment variable DATABASE_URL or individual vars (DB_SERVER, DB_NAME, DB_USER, DB_PASSWORD)
+- Exports a mssql ConnectionPool config object
+- Supports both local Docker SQL Server and Azure SQL (with encrypt: true for Azure)
+- Add a comment block explaining which env vars to set in Azure App Service Configuration
+ 
+Also create a /frontend/.env.production file with:
+REACT_APP_API_URL=https://<your-azure-app-service-name>.azurewebsites.net
+(with a comment to replace with actual Azure App Service URL)
+```
+ 
+---
+ 
+## BONUS — Thunder Client Test Collection
+ 
+```
+Create a thunder-tests.json file in /backend that contains Thunder Client (VS Code extension) test requests for:
+ 
+1. POST /api/calculate — happy path with sample Ontario income $95,000
+2. POST /api/calculate — with RRSP contribution $15,000
+3. POST /api/calculate — high income $250,000 to test surtax
+4. POST /api/calculate — validation error (negative income)
+5. GET /api/tax-data/2024
+6. GET /api/tax-data/9999 (expect 404)
+ 
+Use localhost:5000 as base URL.
+```
+ 
+---
+ 
+## 📌 Quick Reference — Key Cursor Tips
+ 
+| Action | Shortcut |
+|---|---|
+| Open Cursor Chat | Cmd+L (Mac) / Ctrl+L (Win) |
+| Ask about current file | Cmd+L then @filename |
+| Inline edit (small fix) | Cmd+K |
+| Reference multiple files | Use @file1 @file2 in chat |
+| Apply suggested code | Click "Apply" in chat response |
+| Run terminal commands | Cursor has integrated terminal |
+ 
+---
+ 
+## ⚠️ Things to Manually Verify After Cursor Generates
+ 
+- [ ] CRA federal bracket values match current tax year on canada.ca
+- [ ] Ontario bracket values match ontario.ca
+- [ ] CPP max pensionable earnings and rate for the year
+- [ ] EI premium rate and max insurable earnings
+- [ ] RRSP contribution limit for the year ($31,560 for 2025)
+- [ ] Ontario Basic Personal Amount value
+- [ ] Ontario surtax thresholds
+
+
+
+Architecture Map ;
+[User Browser]  --> [Azure Static Web App or App Service] - (React/Angular Frontend)  --> [Azure App Service - Rest API [Node.Js/.Net/python]] --> Azure Sql Database - Tax Tables, User Session and Audit logs
+
+
+
+Run Locally : 
+docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourLocalPassword123!" -e "MSSQL_ENCRYPT=NO" -p 1433:1433 --name ontario-tax-sql -d mcr.microsoft.com/mssql/server:2022-latest
+
+# Connect into the container
+docker exec -it ontario-tax-sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourLocalPassword123!" -No
+  
+type db\schema.sql | docker exec -i ontario-tax-sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourLocalPassword123!" -No -d ontario_tax_db
+
+type db\seed.sql | docker exec -i ontario-tax-sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourLocalPassword123!" -No -d ontario_tax_db
+
+Run the backend 
+npm install 
+npm run dev 
+
+Run the frontend 
+npm install 
+npm start 
+
+
