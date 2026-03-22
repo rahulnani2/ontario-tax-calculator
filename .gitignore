@@ -60,3 +60,17 @@ pm2-*.log
 # ─────────────────────────────────────────
 coverage/
 .nyc_output/
+
+# __________________________________________
+# Terraform
+# __________________________________________
+**/ .terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+*.tfvars # Contains real values - never commit
+!*.tfvars.example   # Example files are safe to commit 
+.terraform.lock.hcl  # Optional 
+terraform.log
+crash.log
+
